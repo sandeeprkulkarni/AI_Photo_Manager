@@ -2,7 +2,6 @@ import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./components/RootLayout";
 import { Dashboard } from "./components/Dashboard";
 import FaceTraining from "./components/FaceTraining";
-import { DetectedFaces } from "./components/DetectedFaces"; // New Import
 import { PhotoOrganization } from "./components/PhotoOrganization";
 import { LocationGallery } from "./components/LocationGallery";
 import { EventGallery } from "./components/EventGallery";
@@ -16,7 +15,6 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: Dashboard },
       { path: "train", Component: FaceTraining },
-      { path: "faces", element: DetectedFaces }, // New Route
       { path: "organize", Component: PhotoOrganization },
       { path: "locations", Component: LocationGallery },
       { path: "events", Component: EventGallery },

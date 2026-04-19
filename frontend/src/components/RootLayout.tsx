@@ -4,8 +4,7 @@ import { Outlet, NavLink } from "react-router";
 export function RootLayout() {
   const navItems = [
     { path: "/", label: "Dashboard", icon: "📊" },
-    { path: "/faces", label: "Detected Faces", icon: "🔍" }, // New Item
-    { path: "/train", label: "Face Training", icon: "👤" },
+    { path: "/train", label: "Face Training", icon: "👤" }, // This will now contain both tabs
     { path: "/organize", label: "Organize", icon: "📂" },
     { path: "/locations", label: "Locations", icon: "📍" },
     { path: "/events", label: "Events", icon: "✨" },
