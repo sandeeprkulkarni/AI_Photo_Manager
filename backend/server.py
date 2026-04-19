@@ -39,7 +39,28 @@ def get_detected_faces():
     """)
     faces = [{"id": f[0], "url": f"/library/{f[1]}", "cluster": f[2]} for f in cursor.fetchall()]
     conn.close()
-    return faces    
+    return faces
+
+@app.get("/api/faces/unlabeled")
+async def get_unlabeled_faces():
+    """Fetches faces that have been detected but not yet named."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            # photo_id != -1 filters out manual training samples
+            cursor.execute("""
+                SELECT id, face_path, cluster_id 
+                FROM faces 
+                WHERE identity_name IS NULL AND photo_id != -1
+                LIMIT 100
+            """)
+            faces = cursor.fetchall()
+            return [
+                {"id": f[0], "url": f"/library/{f[1]}", "cluster": f[2]} 
+                for f in faces
+            ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))    
 
 @app.get("/api/stats")
 def get_stats():
