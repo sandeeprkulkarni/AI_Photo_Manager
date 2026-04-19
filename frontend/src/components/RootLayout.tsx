@@ -4,6 +4,7 @@ import { Outlet, NavLink } from "react-router";
 export function RootLayout() {
   const navItems = [
     { path: "/", label: "Dashboard", icon: "📊" },
+    { path: "/faces", label: "Detected Faces", icon: "🔍" }, // New Item
     { path: "/train", label: "Face Training", icon: "👤" },
     { path: "/organize", label: "Organize", icon: "📂" },
     { path: "/locations", label: "Locations", icon: "📍" },
