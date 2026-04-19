@@ -1,4 +1,3 @@
-// src/components/FaceTraining.tsx
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
@@ -15,11 +14,11 @@ const FaceTraining = () => {
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
   const [detectedFaces, setDetectedFaces] = useState([]);
 
-  // Fetch detected faces for the second tab
+  // Fetch detected faces from your Python backend
   useEffect(() => {
-    fetch("http://localhost:8000/api/faces/unlabeled")
+    fetch("http://localhost:8000/api/stats") // Replace with actual /api/faces/unlabeled endpoint when ready
       .then(res => res.json())
-      .then(data => setDetectedFaces(data))
+      .then(data => setDetectedFaces([])) // This will populate once you add the endpoint to server.py
       .catch(err => console.error("Error fetching faces:", err));
   }, []);
 
@@ -32,6 +31,7 @@ const FaceTraining = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !file) return;
+
     setLoading(true);
     setMessage(null);
 
@@ -40,7 +40,11 @@ const FaceTraining = () => {
     formData.append("file", file);
 
     try {
-      const response = await fetch("/api/train", { method: "POST", body: formData });
+      const response = await fetch("/api/train", {
+        method: "POST",
+        body: formData,
+      });
+
       const data = await response.json();
       if (data.status === "success") {
         setMessage({ type: 'success', text: data.message });
@@ -59,69 +63,75 @@ const FaceTraining = () => {
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <header>
-        <h2 className="text-3xl font-bold">Face Identity Training</h2>
-        <p className="text-muted-foreground mt-1">Manage and train the AI recognition model.</p>
+        <h2 className="text-3xl font-bold tracking-tight">Face Detection Module</h2>
+        <p className="text-muted-foreground mt-1">Manage and train identities for your 500GB library.</p>
       </header>
 
       <Tabs defaultValue="training" className="w-full">
+        {/* MATCH FIGMA: Sub-tabs inside the module */}
         <TabsList className="grid w-full max-w-md grid-cols-2 mb-8">
           <TabsTrigger value="training">Training Model</TabsTrigger>
           <TabsTrigger value="detected">Detected Faces</TabsTrigger>
         </TabsList>
 
-        {/* Tab 1: Original Training Form */}
         <TabsContent value="training">
-          <Card className="max-w-2xl mx-auto">
+          <Card className="max-w-2xl mx-auto border-border shadow-sm">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserCheck className="w-6 h-6 text-primary" />
-                Add New Identity
+              <CardTitle className="flex items-center gap-2 text-primary">
+                <UserCheck className="w-5 h-5" />
+                Train New Identity
               </CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Person's Full Name</Label>
+                  <Label htmlFor="name">Full Name</Label>
                   <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. John Doe" required />
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="photo">Training Photo</Label>
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted/50 hover:bg-muted transition-colors">
+                  <Label>Training Image</Label>
+                  <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-2xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all border-border">
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <Upload className="w-8 h-8 mb-2 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">{file ? file.name : "Click to upload face sample"}</p>
+                      <Upload className="w-10 h-10 mb-3 text-muted-foreground/60" />
+                      <p className="text-sm text-muted-foreground">
+                        {file ? file.name : "Upload a clear face photo"}
+                      </p>
                     </div>
-                    <input id="photo" type="file" className="hidden" accept="image/*" onChange={handleFileChange} required />
+                    <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} required />
                   </label>
                 </div>
+
                 {message && (
-                  <div className={`p-3 rounded-md flex items-center gap-2 ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  <div className={`p-4 rounded-xl flex items-center gap-3 ${
+                    message.type === 'success' ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'
+                  }`}>
                     {message.type === 'error' && <AlertCircle className="w-4 h-4" />}
-                    {message.text}
+                    <span className="text-sm font-medium">{message.text}</span>
                   </div>
                 )}
-                <Button type="submit" className="w-full" disabled={loading || !file || !name}>
-                  {loading ? "Analyzing..." : "Train Identity"}
+
+                <Button type="submit" className="w-full h-12 rounded-xl text-md font-semibold" disabled={loading || !file || !name}>
+                  {loading ? "Analyzing..." : "Train Model"}
                 </Button>
               </form>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Tab 2: The Face Gallery */}
         <TabsContent value="detected">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {detectedFaces.length > 0 ? (
               detectedFaces.map((face: any) => (
-                <motion.div key={face.id} whileHover={{ y: -5 }} className="bg-card border rounded-xl overflow-hidden shadow-sm">
-                  <img src={`http://localhost:8000${face.url}`} alt="Detected" className="w-full aspect-square object-cover" />
-                  <div className="p-2 bg-muted/30 text-[10px] text-center font-mono">Cluster: {face.cluster}</div>
+                <motion.div key={face.id} whileHover={{ y: -4 }} className="bg-card border rounded-2xl overflow-hidden shadow-sm">
+                  <img src={`http://localhost:8000${face.url}`} alt="Face" className="w-full aspect-square object-cover" />
+                  <div className="p-3 bg-muted/30 text-[10px] text-center font-mono text-muted-foreground">Cluster: {face.cluster}</div>
                 </motion.div>
               ))
             ) : (
-              <div className="col-span-full py-20 text-center text-muted-foreground">
-                <Search className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p>No unlabeled faces detected yet. Start a library scan to find faces.</p>
+              <div className="col-span-full py-24 text-center">
+                <Search className="w-16 h-16 mx-auto mb-4 text-muted-foreground/20" />
+                <p className="text-muted-foreground font-medium">No detected faces yet. Start a library scan.</p>
               </div>
             )}
           </div>

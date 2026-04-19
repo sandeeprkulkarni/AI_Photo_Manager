@@ -1,7 +1,7 @@
 import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./components/RootLayout";
 import { Dashboard } from "./components/Dashboard";
-import FaceTraining from "./components/FaceTraining";
+import { FaceTraining } from "./components/FaceTraining";
 import { PhotoOrganization } from "./components/PhotoOrganization";
 import { LocationGallery } from "./components/LocationGallery";
 import { EventGallery } from "./components/EventGallery";
