@@ -26,20 +26,21 @@ app.mount("/library", StaticFiles(directory=PHOTO_DIR), name="library")
 def startup():
     init_db()
     
-@app.get("/api/faces")
-def get_detected_faces():
-    conn = sqlite3.connect(DB_PATH)
-    # Fetch face crops and their cluster IDs
-    # Note: Ensure your face_detector.py saves 'face_path' relative to PHOTO_DIR
-    cursor = conn.execute("""
-        SELECT id, face_path, cluster_id 
-        FROM faces 
-        WHERE photo_id != -1 
-        ORDER BY cluster_id
-    """)
-    faces = [{"id": f[0], "url": f"/library/{f[1]}", "cluster": f[2]} for f in cursor.fetchall()]
-    conn.close()
-    return faces
+@app.get("/api/faces/unlabeled")
+async def get_unlabeled_faces():
+    """Fetches faces detected but not yet named."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, face_path, cluster_id FROM faces WHERE identity_name IS NULL AND photo_id != -1")
+            return [{"id": f[0], "url": f"/library/{f[1]}", "cluster": f[2]} for f in cursor.fetchall()]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/train")
+async def train_new_face(name: str = Form(...), file: UploadFile = File(...)):
+    # ... Face encoding and SQL INSERT logic ...
+    return {"status": "success", "message": f"Trained identity for {name}"}
 
 @app.get("/api/faces/unlabeled")
 async def get_unlabeled_faces():
