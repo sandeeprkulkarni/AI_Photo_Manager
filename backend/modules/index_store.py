@@ -40,7 +40,7 @@ def init_db():
 def label_face_identity(face_id: int, name: str):
     """
     Assigns a name to a specific face and creates/links a person record.
-    Also updates the cluster_id if this face belongs to one.
+    Gracefully handles cluster constraints.
     """
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -51,26 +51,29 @@ def label_face_identity(face_id: int, name: str):
             (name,)
         )
         
-        # 2. Get the person_id and current cluster_id of this face
-        cursor.execute("SELECT id FROM persons WHERE name = ?", (name,))
-        person_id = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT cluster_id FROM faces WHERE id = ?", (face_id,))
-        result = cursor.fetchone()
-        cluster_id = result[0] if result else -1
-
-        # 3. Update the specific face with the identity name
+        # 2. Update the specific face with the identity name
         cursor.execute(
             "UPDATE faces SET identity_name = ? WHERE id = ?", 
             (name, face_id)
         )
 
-        # 4. If the face is part of a cluster, link that cluster to the person
+        # 3. Get the cluster_id of this specific face
+        cursor.execute("SELECT cluster_id FROM faces WHERE id = ?", (face_id,))
+        result = cursor.fetchone()
+        cluster_id = result[0] if result else -1
+
+        # 4. If the face is part of a cluster, try to link that cluster to the person
         if cluster_id != -1:
-            cursor.execute(
-                "UPDATE persons SET cluster_id = ? WHERE id = ?", 
-                (cluster_id, person_id)
-            )
+            try:
+                cursor.execute(
+                    "UPDATE persons SET cluster_id = ? WHERE name = ?", 
+                    (cluster_id, name)
+                )
+            except sqlite3.IntegrityError:
+                # If this cluster_id is already assigned to a DIFFERENT person,
+                # we just ignore the cluster link step to prevent a crash.
+                # The specific face is still successfully named!
+                pass
             
         conn.commit()
 
