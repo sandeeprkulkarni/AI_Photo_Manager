@@ -92,3 +92,16 @@ def get_person_id_by_name(name: str):
         cursor = conn.cursor()
         cursor.execute("SELECT id, cluster_id FROM persons WHERE name = ?", (name,))
         return cursor.fetchone()
+        
+def save_manual_training_face(name, embedding):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    # Ensure person exists
+    cursor.execute("INSERT OR IGNORE INTO persons (name) VALUES (?)", (name,))
+    # Insert face with a placeholder photo_id (-1 indicates training data)
+    cursor.execute("""
+        INSERT INTO faces (photo_id, embedding, identity_name) 
+        VALUES (-1, ?, ?)
+    """, (sqlite3.Binary(embedding), name))
+    conn.commit()
+    conn.close()

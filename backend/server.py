@@ -75,43 +75,34 @@ def get_stats():
 
 # --- NEW: Face Identity Training Endpoint ---
 @app.post("/api/train")
-async def train_identity(name: str = Form(...), file: UploadFile = File(...)):
-    try:
-        # 1. Load the uploaded image
-        image = face_recognition.load_image_file(file.file)
-        
-        # 2. Extract face encoding (embedding)
-        encodings = face_recognition.face_encodings(image)
-        
-        if not encodings:
-            raise HTTPException(status_code=400, detail="No face detected in the photo.")
-        
-        embedding = encodings[0]
-        embedding_blob = embedding.tobytes()
+async def train_face(name: str = Form(...), file: UploadFile = File(...)):
+    import os, shutil
+    from modules.face_detector import extract_faces
+    from modules.index_store import label_face_identity, add_manual_face_embedding
 
-        # 3. Save to Database
-        conn = sqlite3.connect(DB_PATH)
-        # Create a unique cluster_id for this person (using timestamp as a simple ID)
-        import time
-        cluster_id = int(time.time())
+    # 1. Save uploaded file temporarily
+    temp_path = f"temp_{file.filename}"
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    try:
+        # 2. Extract faces from the image
+        faces = extract_faces(temp_path)
+        if not faces:
+            return {"status": "error", "message": "No face detected in the image."}
+
+        # 3. Use the first detected face for training
+        embedding = faces[0]['embedding']
         
-        # Add to persons table
-        conn.execute("INSERT INTO persons (name, cluster_id) VALUES (?, ?)", (name, cluster_id))
-        
-        # Add a reference face to the faces table for future matching
-        conn.execute("""
-            INSERT INTO faces (photo_id, embedding, cluster_id) 
-            VALUES (?, ?, ?)
-        """, (-1, embedding_blob, cluster_id)) # photo_id -1 indicates a training sample
-        
-        conn.commit()
-        conn.close()
-        
-        return {"status": "success", "message": f"Successfully trained identity for {name}"}
-        
-    except Exception as e:
-        print(f"Training Error: {e}")
-        return {"status": "error", "message": str(e)}
+        # 4. Save to DB (identity name and embedding)
+        # We use a helper to store this as a 'reference' face
+        from modules.index_store import save_manual_training_face
+        save_manual_training_face(name, embedding)
+
+        return {"status": "success", "message": f"Successfully trained model for {name}"}
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
