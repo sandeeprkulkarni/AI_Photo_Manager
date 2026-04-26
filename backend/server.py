@@ -1,13 +1,15 @@
 # backend/server.py
 import uvicorn
 import sqlite3
-import numpy as np
-import face_recognition
+import os, shutil
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+
 from modules.index_store import init_db, DB_PATH
+from modules.face_detector import extract_faces_from_file # Import the new function
+from modules.index_store import save_manual_training_face
 
 app = FastAPI()
 
@@ -26,22 +28,6 @@ app.mount("/library", StaticFiles(directory=PHOTO_DIR), name="library")
 def startup():
     init_db()
     
-@app.get("/api/faces/unlabeled")
-async def get_unlabeled_faces():
-    """Fetches faces detected but not yet named."""
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, face_path, cluster_id FROM faces WHERE identity_name IS NULL AND photo_id != -1")
-            return [{"id": f[0], "url": f"/library/{f[1]}", "cluster": f[2]} for f in cursor.fetchall()]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/train")
-async def train_new_face(name: str = Form(...), file: UploadFile = File(...)):
-    # ... Face encoding and SQL INSERT logic ...
-    return {"status": "success", "message": f"Trained identity for {name}"}
-
 @app.get("/api/faces/unlabeled")
 async def get_unlabeled_faces():
     """Fetches faces that have been detected but not yet named."""
@@ -73,30 +59,24 @@ def get_stats():
     conn.close()
     return {"photos": photos, "faces": faces, "locations": locs, "events": evts}
 
-# --- NEW: Face Identity Training Endpoint ---
 @app.post("/api/train")
 async def train_face(name: str = Form(...), file: UploadFile = File(...)):
-    import os, shutil
-    from modules.face_detector import extract_faces
-    from modules.index_store import label_face_identity, add_manual_face_embedding
-
     # 1. Save uploaded file temporarily
     temp_path = f"temp_{file.filename}"
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     try:
-        # 2. Extract faces from the image
-        faces = extract_faces(temp_path)
+        # 2. Extract faces from the single image using our new function
+        faces = extract_faces_from_file(temp_path)
+        
         if not faces:
-            return {"status": "error", "message": "No face detected in the image."}
+            return {"status": "error", "message": "No face detected in the image. Please use a clearer photo."}
 
         # 3. Use the first detected face for training
         embedding = faces[0]['embedding']
         
         # 4. Save to DB (identity name and embedding)
-        # We use a helper to store this as a 'reference' face
-        from modules.index_store import save_manual_training_face
         save_manual_training_face(name, embedding)
 
         return {"status": "success", "message": f"Successfully trained model for {name}"}

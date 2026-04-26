@@ -40,7 +40,10 @@ export function FaceTraining() {
     formData.append("file", file);
 
     try {
-      const response = await fetch("/api/train", { method: "POST", body: formData });
+      const response = await fetch("http://localhost:8000/api/train", { 
+        method: "POST", 
+        body: formData 
+    });
       const data = await response.json();
       setMessage({ type: data.status === "success" ? 'success' : 'error', text: data.message });
       if (data.status === "success") { setName(""); setFile(null); }
