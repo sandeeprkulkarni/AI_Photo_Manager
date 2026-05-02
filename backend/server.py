@@ -136,5 +136,48 @@ async def label_existing_face(face_id: int, name: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
         
+@app.post("/api/scan")
+async def start_folder_scan(request: ScanRequest):
+    """
+    Triggers the scanner to process a local directory for photos and faces.
+    """
+    if not os.path.exists(request.folder_path):
+        raise HTTPException(status_code=400, detail="Directory does not exist.")
+    
+    try:
+        # Assuming your scanner module has a function to start the job
+        scan_directory(request.folder_path)
+        return {"status": "success", "message": f"Started scanning: {request.folder_path}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/faces/labeled")
+async def get_labeled_faces():
+    """
+    Retrieves a unique list of labeled faces with a sample image for each.
+    """
+    try:
+        # Connecting to your SQLite DB as defined in your architecture
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Query to get one sample photo per named person. 
+        # (Assumes your table has 'person_name' and 'file_path' columns)
+        cursor.execute("""
+            SELECT person_name, MIN(file_path) as sample_image
+            FROM faces 
+            WHERE person_name IS NOT NULL AND person_name != ''
+            GROUP BY person_name
+        """)
+        
+        rows = cursor.fetchall()
+        labeled_faces = [{"name": row["person_name"], "image": row["sample_image"]} for row in rows]
+        
+        conn.close()
+        return {"status": "success", "faces": labeled_faces}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))        
+        
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
