@@ -1,11 +1,10 @@
-// frontend/src/components/FaceTraining.tsx
 import React, { useState, useEffect } from 'react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Card, CardContent } from "./ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { FolderSearch, CheckCircle2 } from "lucide-react";
-import UnidentifiedPhotos from "./UnidentifiedPhotos"; // Your existing component
+import UnidentifiedPhotos from "./UnidentifiedPhotos";
 
 // Define the type for our named faces
 interface LabeledFace {

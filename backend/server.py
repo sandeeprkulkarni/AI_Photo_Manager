@@ -10,6 +10,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 import io
 
+from pydantic import BaseModel
 from modules.index_store import init_db, DB_PATH
 from modules.face_detector import extract_faces_from_file, extract_faces
 from modules.scanner import Scanner
@@ -28,9 +29,12 @@ app.add_middleware(
 app.mount("/library", StaticFiles(directory=PHOTO_DIR), name="library")
 
 @app.on_event("startup")
-def startup():
+async def startup_event():
     init_db()
 
+# Add this class definition before your @app.post("/api/scan") route
+class ScanRequest(BaseModel):
+    folder_path: str
 # --- NEW: Trigger a Library Scan ---
 @app.post("/api/scan")
 async def scan_library():
