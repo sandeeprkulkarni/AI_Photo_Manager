@@ -1,67 +1,149 @@
-// src/components/Dashboard.tsx
-import { useEffect, useState } from "react";
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { motion } from "motion/react";
-import { Image, Users, MapPin, Sparkles } from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Image as ImageIcon, Users, Calendar, MapPin, Loader2 } from 'lucide-react';
 
-// Named export to match routes.tsx
-export function Dashboard() {
-  const [stats, setStats] = useState({ photos: 0, faces: 0, locations: 0, events: 0 });
+interface DashboardStats {
+  totalPhotos: number;
+  facesFound: number;
+  events: number;
+  locations: number;
+  chartData: { name: string; photos: number }[];
+}
+
+export const Dashboard = () => {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/stats")
-      .then(res => res.json())
-      .then(data => setStats({
-        photos: data.photos || 0,
-        faces: data.faces || 0,
-        locations: data.locations || 0,
-        events: data.events || 0
-      }))
-      .catch(err => console.error("Stats Error:", err));
+    const fetchStats = async () => {
+      try {
+        const response = await fetch('/api/stats');
+        if (!response.ok) throw new Error('Failed to fetch statistics');
+        const data = await response.json();
+        setStats(data);
+      } catch (err) {
+        console.error("Error fetching stats:", err);
+        setError("Could not load dashboard data.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
   }, []);
 
-  const cards = [
-    { label: "Photos", val: stats.photos, icon: <Image size={20}/>, color: "var(--primary)" },
-    { label: "Faces", val: stats.faces, icon: <Users size={20}/>, color: "#10b981" },
-    { label: "Places", val: stats.locations, icon: <MapPin size={20}/>, color: "#f59e0b" },
-    { label: "Events", val: stats.events, icon: <Sparkles size={20}/>, color: "#8b5cf6" }
-  ];
+  if (loading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center text-slate-500">
+        <Loader2 className="h-8 w-8 animate-spin mr-2" />
+        <p>Loading your library stats...</p>
+      </div>
+    );
+  }
+
+  if (error || !stats) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center text-red-500">
+        <p>{error}</p>
+      </div>
+    );
+  }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-10">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {cards.map((card, i) => (
-          <div key={i} className="p-6 bg-card border border-border rounded-2xl shadow-sm">
-            <div className="flex items-center gap-3 text-muted-foreground mb-4">
-              <span style={{ color: card.color }}>{card.icon}</span>
-              <span className="text-xs font-bold uppercase tracking-widest">{card.label}</span>
-            </div>
-            <p className="text-4xl font-black">{(card.val || 0).toLocaleString()}</p>
-          </div>
-        ))}
+    <div className="p-6 max-w-7xl mx-auto space-y-8 text-slate-900 dark:text-slate-50">
+      
+      {/* --- Section 1: Top Stat Cards --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        
+        <Card className="bg-white dark:bg-slate-900">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium text-slate-500">Total Photos</CardTitle>
+            <ImageIcon className="h-4 w-4 text-slate-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalPhotos.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-slate-900">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium text-slate-500">Faces Found</CardTitle>
+            <Users className="h-4 w-4 text-slate-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.facesFound.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-slate-900">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium text-slate-500">Events Detected</CardTitle>
+            <Calendar className="h-4 w-4 text-slate-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.events.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-slate-900">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium text-slate-500">Locations</CardTitle>
+            <MapPin className="h-4 w-4 text-slate-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.locations.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+
       </div>
 
-      <div className="p-10 bg-card border border-border rounded-3xl shadow-sm h-96">
-        <h3 className="text-lg font-medium mb-8 text-foreground">Library Insights</h3>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={[
-            { n: "Photos", v: stats.photos },
-            { n: "Faces", v: stats.faces },
-            { n: "Places", v: stats.locations }
-          ]}>
-            <XAxis dataKey="n" axisLine={false} tickLine={false} tick={{fill: 'var(--muted-foreground)'}} />
-            <Tooltip 
-              cursor={{fill: 'var(--accent)'}} 
-              contentStyle={{backgroundColor: 'var(--card)', borderRadius: '12px', border: '1px solid var(--border)'}} 
-            />
-            <Bar dataKey="v" radius={[10, 10, 10, 10]} barSize={50}>
-              <Cell fill="var(--primary)" />
-              <Cell fill="var(--secondary-foreground)" />
-              <Cell fill="var(--muted-foreground)" />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </motion.div>
+      {/* --- Section 2: The Chart --- */}
+      <Card className="bg-white dark:bg-slate-900 pt-6">
+        <CardHeader>
+          <CardTitle>Photo Timeline</CardTitle>
+        </CardHeader>
+        <CardContent>
+          
+          {/* THE FIX IS HERE: Notice the fixed height wrapper class (h-[350px]) */}
+          <div className="h-[350px] w-full mt-4">
+            
+            {stats.chartData.length === 0 ? (
+               <div className="h-full flex items-center justify-center text-slate-500">
+                 No timeline data available yet. Try scanning a folder!
+               </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.chartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#64748b' }} 
+                    dy={10}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#64748b' }} 
+                  />
+                  <Tooltip 
+                    cursor={{ fill: '#f1f5f9' }}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Bar dataKey="photos" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+            
+          </div>
+          
+        </CardContent>
+      </Card>
+    </div>
   );
-}
+};
+
+export default Dashboard;
