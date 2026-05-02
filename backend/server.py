@@ -1,6 +1,6 @@
 import os
 import sqlite3
-import uvicorn  # <-- NEW: Required to run the server
+import uvicorn
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -9,6 +9,9 @@ from contextlib import asynccontextmanager
 
 # Import from your modules
 from modules.index_store import DB_PATH
+
+# --- Global State for Scanning Progress ---
+scan_status = {"is_scanning": False}
 
 # 1. Setup Lifespan 
 @asynccontextmanager
@@ -40,25 +43,43 @@ class TrainRequest(BaseModel):
 
 # --- Background Task Functions ---
 def run_scanner_job(folder_path: str):
-    """Runs the scanner in the background so the UI doesn't freeze."""
+    """Runs the scanner in the background and updates the global status."""
+    global scan_status
+    scan_status["is_scanning"] = True
+    
     try:
-        from modules.scanner import scan_directory
+        from modules.scanner import PhotoScanner
         print(f"Starting background scan for: {folder_path}")
-        scan_directory(folder_path)
+        
+        scanner = PhotoScanner()
+        scanner.scan_directory(folder_path)
+        
         print("Scan completed successfully!")
     except Exception as e:
         print(f"Background scanner failed: {e}")
+    finally:
+        # Always mark as finished, even if it crashes
+        scan_status["is_scanning"] = False
 
 
 # --- API Endpoints ---
+
+@app.get("/api/scan/status")
+async def get_scan_status():
+    """Allows the React frontend to check if a scan is currently running."""
+    return scan_status
 
 @app.post("/api/scan")
 async def start_folder_scan(request: ScanRequest, background_tasks: BackgroundTasks):
     """
     Triggers the scanner as a background task.
     """
+    global scan_status
     if not os.path.exists(request.folder_path):
         raise HTTPException(status_code=400, detail="Directory does not exist.")
+    
+    if scan_status["is_scanning"]:
+        raise HTTPException(status_code=400, detail="A scan is already in progress.")
     
     # Add the scan to background tasks and return immediately to React
     background_tasks.add_task(run_scanner_job, request.folder_path)
@@ -156,6 +177,7 @@ async def get_dashboard_stats():
     except Exception as e:
         print(f"Stats Error: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
+
 # =====================================================================
 # YOUR EXISTING ROUTES
 # =====================================================================
@@ -172,7 +194,7 @@ async def train_face(request: TrainRequest):
 
 
 # =====================================================================
-# STARTUP BLOCK (This is what was missing!)
+# STARTUP BLOCK 
 # =====================================================================
 if __name__ == "__main__":
     # This block tells Python to actually start the web server on port 8000
