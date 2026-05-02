@@ -1,10 +1,13 @@
+// frontend/src/components/FaceTraining.tsx
 import React, { useState, useEffect } from 'react';
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { FolderSearch, CheckCircle2 } from "lucide-react";
-import UnidentifiedPhotos from "./UnidentifiedPhotos";
+
+// FIXED: Added curly braces here to correctly perform a named import!
+import { UnidentifiedPhotos } from "./UnidentifiedPhotos"; 
 
 // Define the type for our named faces
 interface LabeledFace {
@@ -12,7 +15,8 @@ interface LabeledFace {
   image: string;
 }
 
-export default function FaceTraining() {
+// Exporting as a Named Export
+export const FaceTraining = () => {
   const [folderPath, setFolderPath] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [labeledFaces, setLabeledFaces] = useState<LabeledFace[]>([]);
@@ -112,7 +116,6 @@ export default function FaceTraining() {
               {labeledFaces.map((face, index) => (
                 <div key={index} className="flex flex-col items-center space-y-3 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:shadow-md transition-shadow">
                   <div className="w-24 h-24 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 dark:border-slate-700">
-                    {/* Note: Ensure your backend serves local files via a static route, or convert to base64 if needed */}
                     <img 
                       src={`/api/image?path=${encodeURIComponent(face.image)}`} 
                       alt={face.name} 
@@ -130,4 +133,7 @@ export default function FaceTraining() {
       </Tabs>
     </div>
   );
-}
+};
+
+// Exporting as a Default Export (prevents router crash)
+export default FaceTraining;
