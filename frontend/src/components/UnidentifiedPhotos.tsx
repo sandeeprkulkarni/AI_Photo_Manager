@@ -1,144 +1,142 @@
-import { useState } from "react";
-import { AlertCircle, UserX, MapPinOff, Grid3x3, Send } from "lucide-react";
-import { Link } from "react-router";
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent } from "./ui/card";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
+import { Check, UserPlus, Loader2, CheckCircle2 } from "lucide-react";
 
-const mockUnidentified = Array.from({ length: 18 }, (_, i) => ({
-  id: i + 1,
-  reason: i % 3 === 0 ? "no-face" : i % 3 === 1 ? "no-location" : "no-event",
-}));
+interface UnlabeledFace {
+  id: number;
+  image: string; // The file path of the photo
+}
 
-const reasonLabels = {
-  "no-face": "Face not recognized",
-  "no-location": "Location unavailable",
-  "no-event": "Event not detected",
-};
+export const UnidentifiedPhotos = () => {
+  const [faces, setFaces] = useState<UnlabeledFace[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [trainingId, setTrainingId] = useState<number | null>(null);
+  const [nameInputs, setNameInputs] = useState<{ [key: number]: string }>({});
 
-const reasonIcons = {
-  "no-face": UserX,
-  "no-location": MapPinOff,
-  "no-event": AlertCircle,
-};
+  const fetchUnlabeledFaces = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/faces/unlabeled');
+      const data = await response.json();
+      if (data.status === 'success') {
+        setFaces(data.faces);
+      }
+    } catch (error) {
+      console.error("Failed to fetch unlabeled faces:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-export function UnidentifiedPhotos() {
-  const [selectedPhotos, setSelectedPhotos] = useState<number[]>([]);
-  const [filterReason, setFilterReason] = useState<string | null>(null);
+  useEffect(() => {
+    fetchUnlabeledFaces();
+  }, []);
 
-  const filteredPhotos = filterReason
-    ? mockUnidentified.filter((p) => p.reason === filterReason)
-    : mockUnidentified;
+  const handleNameChange = (id: number, value: string) => {
+    setNameInputs(prev => ({ ...prev, [id]: value }));
+  };
 
-  const toggleSelection = (id: number) => {
-    setSelectedPhotos((prev) =>
-      prev.includes(id) ? prev.filter((photoId) => photoId !== id) : [...prev, id]
+  const handleTrainFace = async (faceId: number) => {
+    const nameToAssign = nameInputs[faceId];
+    if (!nameToAssign || nameToAssign.trim() === "") return;
+
+    setTrainingId(faceId);
+    
+    try {
+      const response = await fetch('/api/train', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ face_id: faceId, name: nameToAssign.trim() })
+      });
+
+      if (response.ok) {
+        // Remove the trained face from the UI
+        setFaces(prev => prev.filter(face => face.id !== faceId));
+        // Clear the input
+        const newInputs = { ...nameInputs };
+        delete newInputs[faceId];
+        setNameInputs(newInputs);
+      } else {
+        alert("Failed to train face. Please try again.");
+      }
+    } catch (error) {
+      console.error("Training error:", error);
+    } finally {
+      setTrainingId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center text-slate-500">
+        <Loader2 className="h-8 w-8 animate-spin mr-2" />
+        <span>Finding unidentified faces...</span>
+      </div>
     );
-  };
+  }
 
-  const reasonCounts = {
-    "no-face": mockUnidentified.filter((p) => p.reason === "no-face").length,
-    "no-location": mockUnidentified.filter((p) => p.reason === "no-location").length,
-    "no-event": mockUnidentified.filter((p) => p.reason === "no-event").length,
-  };
+  if (faces.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-slate-500">
+        <CheckCircle2 className="w-12 h-12 mb-4 text-green-500 opacity-80" />
+        <h3 className="text-lg font-medium text-slate-700 dark:text-slate-300">All caught up!</h3>
+        <p>No unidentified faces found. Try scanning more photos.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="border-b border-border bg-card px-8 py-6">
-        <div className="max-w-[1400px] mx-auto">
-          <div className="mb-6">
-            <h1>Unidentified Photos</h1>
-            <p className="text-muted-foreground mt-1">
-              {filteredPhotos.length} photos need review
-            </p>
-          </div>
-
-          {/* Filter chips */}
-          <div className="flex gap-3 mb-6">
-            <button
-              onClick={() => setFilterReason(null)}
-              className={`px-4 py-2 rounded-lg transition-colors ${
-                filterReason === null
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted hover:bg-accent"
-              }`}
-            >
-              All ({mockUnidentified.length})
-            </button>
-            {Object.entries(reasonCounts).map(([reason, count]) => {
-              const Icon = reasonIcons[reason as keyof typeof reasonIcons];
-              return (
-                <button
-                  key={reason}
-                  onClick={() => setFilterReason(reason)}
-                  className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
-                    filterReason === reason
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted hover:bg-accent"
-                  }`}
-                >
-                  <Icon size={16} />
-                  {reasonLabels[reason as keyof typeof reasonLabels]} ({count})
-                </button>
-              );
-            })}
-          </div>
-
-          {selectedPhotos.length > 0 && (
-            <div className="flex items-center gap-3 p-4 bg-primary/10 rounded-lg">
-              <div className="flex-1">
-                {selectedPhotos.length} photos selected
-              </div>
-              <Link
-                to="/train"
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
-              >
-                <Send size={16} />
-                Send to Training
-              </Link>
-              <button
-                onClick={() => setSelectedPhotos([])}
-                className="px-4 py-2 border border-border rounded-lg hover:bg-accent transition-colors"
-              >
-                Clear
-              </button>
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+      {faces.map((face) => (
+        <Card key={face.id} className="overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:shadow-lg transition-all group">
+          
+          {/* Image Container */}
+          <div className="aspect-square relative bg-slate-100 dark:bg-slate-800">
+            {/* Note: We use the /api/image route to bypass browser local path restrictions */}
+            <img 
+              src={`/api/image?path=${encodeURIComponent(face.image)}`} 
+              alt="Unidentified face" 
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
+               <span className="text-white text-xs font-medium flex items-center">
+                 <UserPlus className="w-3 h-3 mr-1" /> Who is this?
+               </span>
             </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-8">
-        <div className="max-w-[1400px] mx-auto">
-          <div className="grid grid-cols-6 gap-4">
-            {filteredPhotos.map((photo) => {
-              const Icon = reasonIcons[photo.reason as keyof typeof reasonIcons];
-              const isSelected = selectedPhotos.includes(photo.id);
-
-              return (
-                <div
-                  key={photo.id}
-                  onClick={() => toggleSelection(photo.id)}
-                  className={`aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
-                    isSelected ? "border-primary" : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <div className="relative w-full h-full bg-muted flex flex-col items-center justify-center gap-2">
-                    <Grid3x3 size={32} className="text-muted-foreground" />
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
-                      <Icon size={12} />
-                      <span className="truncate">{reasonLabels[photo.reason as keyof typeof reasonLabels]}</span>
-                    </div>
-                    {isSelected && (
-                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                        <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                          <AlertCircle size={16} className="text-primary-foreground" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
           </div>
-        </div>
-      </div>
+
+          {/* Input Controls */}
+          <CardContent className="p-3 bg-slate-50 dark:bg-slate-950">
+            <div className="flex gap-2">
+              <Input 
+                placeholder="Enter name..." 
+                className="h-9 text-sm bg-white dark:bg-slate-900 focus-visible:ring-1"
+                value={nameInputs[face.id] || ""}
+                onChange={(e) => handleNameChange(face.id, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleTrainFace(face.id);
+                }}
+                disabled={trainingId === face.id}
+              />
+              <Button 
+                size="icon" 
+                className="h-9 w-9 shrink-0" 
+                onClick={() => handleTrainFace(face.id)}
+                disabled={!nameInputs[face.id] || trainingId === face.id}
+              >
+                {trainingId === face.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </CardContent>
+          
+        </Card>
+      ))}
     </div>
   );
-}
+};
