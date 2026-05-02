@@ -1,114 +1,180 @@
 import os
-from pathlib import Path
 import sqlite3
-import hashlib
-from datetime import datetime
+import uvicorn
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from contextlib import asynccontextmanager
 
-# Import your database path
-from modules.index_store import DB_PATH
+# Import from your modules
+from modules.index_store import DB_PATH, init_db, label_face_identity
 
-class PhotoScanner:
-    def __init__(self):
-        # We define valid image extensions to filter out non-image files
-        self.supported_extensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic'}
-        
-        # The status_tracker gets injected by server.py automatically
-        self.status_tracker = None
+# --- Global State for Scanning Progress ---
+scan_status = {
+    "is_scanning": False,
+    "current": 0,
+    "total": 0,
+    "message": ""
+}
 
-    def get_file_hash(self, file_path):
-        """Generates a quick MD5 hash of the file to prevent adding duplicates to the DB."""
-        hasher = hashlib.md5()
-        with open(file_path, 'rb') as f:
-            buf = f.read(65536)
-            while len(buf) > 0:
-                hasher.update(buf)
-                buf = f.read(65536)
-        return hasher.hexdigest()
+# 1. Setup Lifespan (Ensures Database is created before server starts!)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("========================================")
+    print("🚀 Booting AI Photo Manager...")
+    try:
+        init_db() # Forces the creation of data/db/index.db and all tables
+        print("✅ Database initialized successfully.")
+    except Exception as e:
+        print(f"❌ Database error during startup: {e}")
+    print("========================================")
+    yield
+    print("Shutting down AI Photo Manager Backend...")
 
-    def scan_directory(self, folder_path: str):
-        """
-        Scans a directory recursively, updates the status tracker, and processes images.
-        """
-        print(f"Scanner initialized for: {folder_path}")
-        
-        if self.status_tracker:
-            self.status_tracker["message"] = "Locating image files..."
-            
-        all_files = []
-        for root, dirs, files in os.walk(folder_path):
-            for file in files:
-                ext = Path(file).suffix.lower()
-                if ext in self.supported_extensions:
-                    all_files.append(os.path.join(root, file))
-                    
-        total_files = len(all_files)
-        
-        if total_files == 0:
-            if self.status_tracker:
-                self.status_tracker["message"] = "No images found in directory."
-            return
+app = FastAPI(lifespan=lifespan)
 
-        current_count = 0
-        
-        # --- CONNECT TO DATABASE ---
-        # We open the connection before the loop to save the files as we find them.
+# 2. CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Pydantic Models ---
+class ScanRequest(BaseModel):
+    folder_path: str
+
+class TrainRequest(BaseModel):
+    face_id: int
+    name: str
+
+# --- Background Task Functions ---
+def run_scanner_job(folder_path: str):
+    """Runs the scanner in the background and updates the global status."""
+    global scan_status
+    scan_status.update({"is_scanning": True, "current": 0, "total": 0, "message": "Initializing..."})
+    
+    try:
+        from modules.scanner import PhotoScanner
+        scanner = PhotoScanner()
+        scanner.status_tracker = scan_status # Inject progress tracker
+        scanner.scan_directory(folder_path)
+        scan_status["message"] = "Scan completed successfully!"
+    except Exception as e:
+        print(f"Background scanner failed: {e}")
+        scan_status["message"] = f"Error: {str(e)}"
+    finally:
+        import time
+        time.sleep(2)
+        scan_status["is_scanning"] = False
+
+# --- API Endpoints ---
+@app.get("/api/scan/status")
+async def get_scan_status():
+    return scan_status
+
+@app.post("/api/scan")
+async def start_folder_scan(request: ScanRequest, background_tasks: BackgroundTasks):
+    global scan_status
+    if not os.path.exists(request.folder_path):
+        raise HTTPException(status_code=400, detail="Directory does not exist.")
+    if scan_status["is_scanning"]:
+        raise HTTPException(status_code=400, detail="Scan in progress.")
+    
+    background_tasks.add_task(run_scanner_job, request.folder_path)
+    return {"status": "success"}
+
+@app.get("/api/stats")
+async def get_dashboard_stats():
+    try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        for file_path in all_files:
-            current_count += 1
-            filename = os.path.basename(file_path)
-            
-            # --- UPDATE PROGRESS UI ---
-            if self.status_tracker:
-                self.status_tracker["current"] = current_count
-                self.status_tracker["total"] = total_files
-                self.status_tracker["message"] = f"Analyzing {filename}..."
-            
-            try:
-                # 1. Generate hash to avoid processing the same photo twice
-                file_hash = self.get_file_hash(file_path)
-                
-                # Check if this exact photo is already in the database
-                cursor.execute("SELECT id FROM photos WHERE hash = ?", (file_hash,))
-                if cursor.fetchone():
-                    continue # Skip duplicate and move to the next file
-                    
-                # 2. Get basic file metadata
-                size_kb = os.path.getsize(file_path) // 1024
-                
-                # 3. Save the Photo to the Database
-                cursor.execute("""
-                    INSERT INTO photos (path, hash, size_kb, taken_at)
-                    VALUES (?, ?, ?, ?)
-                """, (file_path, file_hash, size_kb, datetime.now()))
-                
-                photo_id = cursor.lastrowid
-                
-                # ==========================================================
-                # FACE DETECTION LOGIC HOOK
-                # If you have face_detector.py ready, you would call it here!
-                #
-                # Example:
-                # faces = my_face_detector.find_faces(file_path)
-                # for face in faces:
-                #     cursor.execute("""
-                #         INSERT INTO faces (photo_id, embedding, rect_x, rect_y, rect_w, rect_h)
-                #         VALUES (?, ?, ?, ?, ?, ?)
-                #     """, (photo_id, face.embedding, face.x, face.y, face.w, face.h))
-                # ==========================================================
-                
-                # Commit to the database every 10 photos so the UI updates smoothly
-                if current_count % 10 == 0:
-                    conn.commit()
-                    
-            except Exception as e:
-                print(f"Error processing {filename}: {e}")
-                continue
-                
-        # Final database commit and cleanup after the loop finishes
-        conn.commit()
-        conn.close()
+        cursor.execute("SELECT COUNT(id) FROM photos")
+        total_photos = cursor.fetchone()[0]
         
-        if self.status_tracker:
-            self.status_tracker["message"] = "Scan completed successfully!"
+        cursor.execute("SELECT COUNT(id) FROM faces")
+        total_faces = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(DISTINCT event_type) FROM photos WHERE event_type IS NOT NULL AND event_type != ''")
+        total_events = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(DISTINCT location_name) FROM photos WHERE location_name IS NOT NULL AND location_name != ''")
+        total_locations = cursor.fetchone()[0]
+        
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT strftime('%Y-%m', taken_at) as period, COUNT(*) as count FROM photos WHERE taken_at IS NOT NULL GROUP BY period ORDER BY period")
+        chart_data = [{"name": row["period"], "photos": row["count"]} for row in cursor.fetchall()]
+        
+        conn.close()
+        return {
+            "totalPhotos": total_photos,
+            "facesFound": total_faces,
+            "events": total_events,
+            "locations": total_locations,
+            "chartData": chart_data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/faces/labeled")
+async def get_labeled_faces():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT f.identity_name as name, MIN(p.path) as sample_image
+            FROM faces f JOIN photos p ON f.photo_id = p.id
+            WHERE f.identity_name IS NOT NULL AND f.identity_name != ''
+            GROUP BY f.identity_name
+        """)
+        faces = [{"name": r["name"], "image": r["sample_image"]} for r in cursor.fetchall()]
+        conn.close()
+        return {"status": "success", "faces": faces}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/faces/unlabeled")
+async def get_unlabeled_faces():
+    """Fetches faces without names for the UI to train."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT f.id, p.path 
+            FROM faces f JOIN photos p ON f.photo_id = p.id
+            WHERE f.identity_name IS NULL OR f.identity_name = ''
+            LIMIT 50
+        """)
+        faces = [{"id": r["id"], "image": r["path"]} for r in cursor.fetchall()]
+        conn.close()
+        return {"status": "success", "faces": faces}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/train")
+async def train_face(request: TrainRequest):
+    """Uses your index_store logic to name a face."""
+    try:
+        label_face_identity(request.face_id, request.name)
+        return {"status": "success", "message": "Face labeled!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/image")
+async def serve_image(path: str):
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(path)
+
+# =====================================================================
+# STARTUP BLOCK 
+# =====================================================================
+if __name__ == "__main__":
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
