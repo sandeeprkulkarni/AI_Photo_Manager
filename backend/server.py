@@ -11,7 +11,12 @@ from contextlib import asynccontextmanager
 from modules.index_store import DB_PATH
 
 # --- Global State for Scanning Progress ---
-scan_status = {"is_scanning": False}
+scan_status = {
+    "is_scanning": False,
+    "current": 0,
+    "total": 0,
+    "message": ""
+}
 
 # 1. Setup Lifespan 
 @asynccontextmanager
@@ -45,20 +50,32 @@ class TrainRequest(BaseModel):
 def run_scanner_job(folder_path: str):
     """Runs the scanner in the background and updates the global status."""
     global scan_status
-    scan_status["is_scanning"] = True
+    scan_status.update({
+        "is_scanning": True, 
+        "current": 0, 
+        "total": 0, 
+        "message": "Initializing and counting files..."
+    })
     
     try:
         from modules.scanner import PhotoScanner
         print(f"Starting background scan for: {folder_path}")
         
         scanner = PhotoScanner()
+        
+        # INJECT THE TRACKER: Passes the global dictionary into the scanner class
+        # so the scanner can update the React UI without breaking its own logic.
+        scanner.status_tracker = scan_status
+        
         scanner.scan_directory(folder_path)
         
+        scan_status["message"] = "Scan completed successfully!"
         print("Scan completed successfully!")
     except Exception as e:
         print(f"Background scanner failed: {e}")
+        scan_status["message"] = f"Error: {str(e)}"
     finally:
-        # Always mark as finished, even if it crashes
+        # Mark as finished after a brief delay so the UI hits 100% before disappearing
         scan_status["is_scanning"] = False
 
 
@@ -66,7 +83,7 @@ def run_scanner_job(folder_path: str):
 
 @app.get("/api/scan/status")
 async def get_scan_status():
-    """Allows the React frontend to check if a scan is currently running."""
+    """Allows the React frontend to check scan progress."""
     return scan_status
 
 @app.post("/api/scan")
@@ -81,7 +98,6 @@ async def start_folder_scan(request: ScanRequest, background_tasks: BackgroundTa
     if scan_status["is_scanning"]:
         raise HTTPException(status_code=400, detail="A scan is already in progress.")
     
-    # Add the scan to background tasks and return immediately to React
     background_tasks.add_task(run_scanner_job, request.folder_path)
     
     return {
@@ -134,24 +150,18 @@ async def get_dashboard_stats():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        # 1. Total Photos
         cursor.execute("SELECT COUNT(id) FROM photos")
         total_photos = cursor.fetchone()[0]
         
-        # 2. Total Faces Found
         cursor.execute("SELECT COUNT(id) FROM faces")
         total_faces = cursor.fetchone()[0]
         
-        # 3. Total Events
         cursor.execute("SELECT COUNT(DISTINCT event_type) FROM photos WHERE event_type IS NOT NULL AND event_type != ''")
         total_events = cursor.fetchone()[0]
         
-        # 4. Total Locations
         cursor.execute("SELECT COUNT(DISTINCT location_name) FROM photos WHERE location_name IS NOT NULL AND location_name != ''")
         total_locations = cursor.fetchone()[0]
         
-        # 5. Chart Data: Photos grouped by Month/Year
-        # SQLite's strftime extracts the Year-Month (e.g., '2023-10') from the taken_at DATETIME
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("""
@@ -162,9 +172,7 @@ async def get_dashboard_stats():
             ORDER BY period
         """)
         
-        # Format specifically for Recharts in React: [{name: "2023-10", photos: 45}, ...]
         chart_data = [{"name": row["period"], "photos": row["count"]} for row in cursor.fetchall()]
-        
         conn.close()
         
         return {
@@ -179,17 +187,17 @@ async def get_dashboard_stats():
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
 # =====================================================================
-# YOUR EXISTING ROUTES
+# YOUR EXISTING UNLABELED / TRAIN ROUTES
 # =====================================================================
 
 @app.get("/api/faces/unlabeled")
 async def get_unlabeled_faces():
-    # Replace with your logic
+    # Paste your logic here
     pass 
 
 @app.post("/api/train")
 async def train_face(request: TrainRequest):
-    # Replace with your logic
+    # Paste your logic here
     pass
 
 
@@ -197,5 +205,4 @@ async def train_face(request: TrainRequest):
 # STARTUP BLOCK 
 # =====================================================================
 if __name__ == "__main__":
-    # This block tells Python to actually start the web server on port 8000
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
