@@ -1,11 +1,10 @@
-// frontend/src/components/FaceTraining.tsx
 import React, { useState, useEffect } from 'react';
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { FolderSearch, CheckCircle2, Loader2 } from "lucide-react";
-import { Progress } from "./ui/progress"; // NEW: Importing the progress bar
+import { Progress } from "./ui/progress"; 
 import { UnidentifiedPhotos } from "./UnidentifiedPhotos";
 
 interface LabeledFace {
@@ -16,8 +15,9 @@ interface LabeledFace {
 export const FaceTraining = () => {
   const [folderPath, setFolderPath] = useState("");
   const [isScanning, setIsScanning] = useState(false);
-  const [scanStats, setScanStats] = useState({ current: 0, total: 0, message: "" }); // NEW: Progress state
+  const [scanStats, setScanStats] = useState({ current: 0, total: 0, message: "" }); 
   const [labeledFaces, setLabeledFaces] = useState<LabeledFace[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0); // Trigger to reload faces
 
   const fetchLabeledFaces = async () => {
     try {
@@ -38,7 +38,7 @@ export const FaceTraining = () => {
     fetchLabeledFaces();
   }, []);
 
-  // Polling mechanism to check scan status and PROGRESS every 1 second
+  // Polling mechanism to check scan status
   useEffect(() => {
     let interval: NodeJS.Timeout;
     
@@ -52,8 +52,8 @@ export const FaceTraining = () => {
             setIsScanning(false);
             setScanStats({ current: 0, total: 0, message: "" });
             fetchLabeledFaces(); 
+            setRefreshKey(prev => prev + 1); // Trigger gallery reload!
           } else {
-            // Update our progress state with the numbers from the backend!
             setScanStats({
               current: data.current || 0,
               total: data.total || 0,
@@ -63,7 +63,7 @@ export const FaceTraining = () => {
         } catch (e) {
           console.error("Failed to fetch scan status", e);
         }
-      }, 1000); // Polling every 1 second for smoother UI
+      }, 1000); 
     }
     
     return () => clearInterval(interval);
@@ -94,14 +94,12 @@ export const FaceTraining = () => {
     }
   };
 
-  // Calculate percentage for the Progress bar (protecting against divide-by-zero)
   const progressPercent = scanStats.total > 0 
     ? Math.round((scanStats.current / scanStats.total) * 100) 
     : 0;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8 text-slate-900 dark:text-slate-50">
-      
       <Card className="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 overflow-hidden">
         <CardContent className="p-6 flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row items-end gap-4 w-full">
@@ -131,7 +129,6 @@ export const FaceTraining = () => {
             </Button>
           </div>
 
-          {/* REAL Progress Indicator */}
           {isScanning && (
             <div className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
               <div className="flex justify-between items-end text-sm font-medium">
@@ -144,11 +141,7 @@ export const FaceTraining = () => {
                   </span>
                 )}
               </div>
-              
-              <Progress 
-                value={progressPercent} 
-                className="w-full h-2 bg-slate-200 dark:bg-slate-800" 
-              />
+              <Progress value={progressPercent} className="w-full h-2 bg-slate-200 dark:bg-slate-800" />
             </div>
           )}
         </CardContent>
@@ -163,7 +156,8 @@ export const FaceTraining = () => {
         </TabsList>
 
         <TabsContent value="unidentified" className="mt-6">
-          <UnidentifiedPhotos />
+          {/* Passes the refresh trigger to the gallery */}
+          <UnidentifiedPhotos refreshTrigger={refreshKey} />
         </TabsContent>
 
         <TabsContent value="named" className="mt-6">

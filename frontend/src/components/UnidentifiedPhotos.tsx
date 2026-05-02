@@ -6,10 +6,14 @@ import { Check, UserPlus, Loader2, CheckCircle2 } from "lucide-react";
 
 interface UnlabeledFace {
   id: number;
-  image: string; // The file path of the photo
+  image: string; 
 }
 
-export const UnidentifiedPhotos = () => {
+interface UnidentifiedPhotosProps {
+  refreshTrigger?: number;
+}
+
+export const UnidentifiedPhotos: React.FC<UnidentifiedPhotosProps> = ({ refreshTrigger = 0 }) => {
   const [faces, setFaces] = useState<UnlabeledFace[]>([]);
   const [loading, setLoading] = useState(true);
   const [trainingId, setTrainingId] = useState<number | null>(null);
@@ -30,9 +34,10 @@ export const UnidentifiedPhotos = () => {
     }
   };
 
+  // Re-fetch when the refreshTrigger changes (e.g., scan completes)
   useEffect(() => {
     fetchUnlabeledFaces();
-  }, []);
+  }, [refreshTrigger]);
 
   const handleNameChange = (id: number, value: string) => {
     setNameInputs(prev => ({ ...prev, [id]: value }));
@@ -52,9 +57,7 @@ export const UnidentifiedPhotos = () => {
       });
 
       if (response.ok) {
-        // Remove the trained face from the UI
         setFaces(prev => prev.filter(face => face.id !== faceId));
-        // Clear the input
         const newInputs = { ...nameInputs };
         delete newInputs[faceId];
         setNameInputs(newInputs);
@@ -92,9 +95,7 @@ export const UnidentifiedPhotos = () => {
       {faces.map((face) => (
         <Card key={face.id} className="overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:shadow-lg transition-all group">
           
-          {/* Image Container */}
           <div className="aspect-square relative bg-slate-100 dark:bg-slate-800">
-            {/* Note: We use the /api/image route to bypass browser local path restrictions */}
             <img 
               src={`/api/image?path=${encodeURIComponent(face.image)}`} 
               alt="Unidentified face" 
@@ -107,7 +108,6 @@ export const UnidentifiedPhotos = () => {
             </div>
           </div>
 
-          {/* Input Controls */}
           <CardContent className="p-3 bg-slate-50 dark:bg-slate-950">
             <div className="flex gap-2">
               <Input 

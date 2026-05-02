@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import time
 import uvicorn
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,12 +63,15 @@ def run_scanner_job(folder_path: str):
         scanner = PhotoScanner()
         scanner.status_tracker = scan_status # Inject progress tracker
         scanner.scan_directory(folder_path)
-        scan_status["message"] = "Scan completed successfully!"
+        
+        if scan_status["message"] != "No images found in directory.":
+            scan_status["message"] = "Scan completed successfully!"
+            
     except Exception as e:
         print(f"Background scanner failed: {e}")
         scan_status["message"] = f"Error: {str(e)}"
     finally:
-        import time
+        # Pause for 2 seconds so the React UI has time to catch the 100% state
         time.sleep(2)
         scan_status["is_scanning"] = False
 
