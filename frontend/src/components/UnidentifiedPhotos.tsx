@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
-import { Check, UserPlus, Loader2, CheckCircle2 } from "lucide-react";
+import { Check, UserPlus, Loader2, CheckCircle2, Trash2 } from "lucide-react";
 
 interface UnlabeledFace {
   id: number;
@@ -40,6 +40,24 @@ export const UnidentifiedPhotos: React.FC<UnidentifiedPhotosProps> = ({ refreshT
 
   const handleNameChange = (id: number, value: string) => {
     setNameInputs(prev => ({ ...prev, [id]: value }));
+  };
+
+  // --- NEW: Remove Unwanted Face ---
+  const handleDeleteFace = async (faceId: number) => {
+    try {
+      const response = await fetch(`/api/faces/${faceId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        // Instantly remove it from the screen
+        setFaces(prev => prev.filter(face => face.id !== faceId));
+      } else {
+        alert("Failed to delete face.");
+      }
+    } catch (error) {
+      console.error("Delete error:", error);
+    }
   };
 
   const handleTrainFace = async (faceId: number) => {
@@ -92,16 +110,28 @@ export const UnidentifiedPhotos: React.FC<UnidentifiedPhotosProps> = ({ refreshT
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
       {faces.map((face) => (
-        <Card key={face.id} className="overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:shadow-lg transition-all group">
+        <Card key={face.id} className="overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:shadow-lg transition-all group relative">
           
+          {/* Top Right Delete Button (Only visible on hover) */}
+          <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <Button 
+              variant="destructive" 
+              size="icon" 
+              className="h-7 w-7 rounded-full shadow-md"
+              onClick={() => handleDeleteFace(face.id)}
+              title="Remove unwanted face"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+
           <div className="aspect-square relative bg-slate-100 dark:bg-slate-800">
-            {/* THIS IS THE FIX: We hit the new endpoint with the ID to grab the crop! */}
             <img 
               src={`/api/faces/image/${face.id}`} 
               alt="Unidentified face" 
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3 pointer-events-none">
                <span className="text-white text-xs font-medium flex items-center">
                  <UserPlus className="w-3 h-3 mr-1" /> Who is this?
                </span>

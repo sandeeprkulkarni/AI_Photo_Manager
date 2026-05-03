@@ -10,10 +10,8 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from PIL import Image
 
-# Import from your modules
 from modules.index_store import DB_PATH, init_db, label_face_identity
 
-# --- Global State for Scanning Progress ---
 scan_status = {
     "is_scanning": False,
     "cancel_requested": False,
@@ -90,7 +88,6 @@ async def start_folder_scan(request: ScanRequest, background_tasks: BackgroundTa
 
 @app.post("/api/scan/cancel")
 async def cancel_scan():
-    """Signals the background scanner to stop."""
     global scan_status
     if scan_status["is_scanning"]:
         scan_status["cancel_requested"] = True
@@ -130,16 +127,12 @@ async def get_dashboard_stats():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==========================================
-# NEW ENDPOINT: Fetch All Photos for Organize Tab
-# ==========================================
 @app.get("/api/photos")
 async def get_all_photos():
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        # Order by newest first
         cursor.execute("""
             SELECT id, path, size_kb, taken_at, event_type, location_name 
             FROM photos 
@@ -199,6 +192,21 @@ async def train_face(request: TrainRequest):
     try:
         label_face_identity(request.face_id, request.name)
         return {"status": "success", "message": "Face labeled!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# NEW ENDPOINT: Delete unwanted faces
+# ==========================================
+@app.delete("/api/faces/{face_id}")
+async def delete_face(face_id: int):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM faces WHERE id = ?", (face_id,))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "message": "Face deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

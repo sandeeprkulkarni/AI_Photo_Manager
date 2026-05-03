@@ -3,6 +3,8 @@ from pathlib import Path
 import sqlite3
 import hashlib
 from datetime import datetime
+import numpy as np
+
 from modules.index_store import DB_PATH
 
 class PhotoScanner:
@@ -45,12 +47,27 @@ class PhotoScanner:
         try:
             conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             cursor = conn.cursor()
+            
+            # ==========================================================
+            # 1. PRE-LOAD KNOWN FACES FOR AUTO-TAGGING
+            # ==========================================================
+            cursor.execute("SELECT identity_name, embedding FROM faces WHERE identity_name IS NOT NULL AND identity_name != ''")
+            known_rows = cursor.fetchall()
+            
+            known_names = []
+            known_encodings = []
+            
+            for name, emb in known_rows:
+                if emb:
+                    known_names.append(name)
+                    # Convert the binary blob back into a numpy array for the AI
+                    known_encodings.append(np.frombuffer(emb, dtype=np.float64))
+                    
         except Exception as e:
             print(f"Database connection error: {e}")
             return
         
         for file_path in all_files:
-            # === CANCEL CHECK ===
             if self.status_tracker and self.status_tracker.get("cancel_requested"):
                 self.status_tracker["message"] = "Scan cancelled by user."
                 break
@@ -68,6 +85,7 @@ class PhotoScanner:
                 if not file_hash:
                     continue 
                 
+                # Checks if the exact photo is already indexed
                 cursor.execute("SELECT id FROM photos WHERE hash = ?", (file_hash,))
                 if cursor.fetchone():
                     continue 
@@ -83,7 +101,7 @@ class PhotoScanner:
                 """, (file_path, file_hash, size_kb, datetime.now()))
                 photo_id = cursor.lastrowid
                 
-                # --- FACE DETECTION LOGIC ---
+                # --- FACE DETECTION & AUTO-MATCHING LOGIC ---
                 try:
                     import face_recognition
                     image = face_recognition.load_image_file(file_path)
@@ -94,10 +112,22 @@ class PhotoScanner:
                         for (top, right, bottom, left), encoding in zip(face_locations, face_encodings):
                             w = right - left
                             h = bottom - top
+                            
+                            identity = None
+                            
+                            # 2. COMPARE AGAINST DATABASE BEFORE SAVING
+                            if known_encodings:
+                                # Tolerance 0.5 is strict enough to avoid mixing up people
+                                matches = face_recognition.compare_faces(known_encodings, encoding, tolerance=0.5)
+                                if True in matches:
+                                    first_match_index = matches.index(True)
+                                    identity = known_names[first_match_index]
+                            
+                            # 3. SAVE TO DB (If identity is not None, it won't show in Unidentified!)
                             cursor.execute("""
-                                INSERT INTO faces (photo_id, embedding, rect_x, rect_y, rect_w, rect_h)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            """, (photo_id, encoding.tobytes(), left, top, w, h))
+                                INSERT INTO faces (photo_id, embedding, rect_x, rect_y, rect_w, rect_h, identity_name)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """, (photo_id, encoding.tobytes(), left, top, w, h, identity))
                             
                 except ImportError:
                     print("ERROR: Please run 'pip install face_recognition' to enable face scanning.")
