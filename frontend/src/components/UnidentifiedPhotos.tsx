@@ -22,7 +22,8 @@ export const UnidentifiedPhotos: React.FC<UnidentifiedPhotosProps> = ({ refreshT
   const fetchUnlabeledFaces = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/faces/unlabeled');
+      // FIX: Added a unique timestamp to bypass aggressive browser caching!
+      const response = await fetch(`/api/faces/unlabeled?t=${Date.now()}`);
       const data = await response.json();
       if (data.status === 'success') {
         setFaces(data.faces);
@@ -42,7 +43,6 @@ export const UnidentifiedPhotos: React.FC<UnidentifiedPhotosProps> = ({ refreshT
     setNameInputs(prev => ({ ...prev, [id]: value }));
   };
 
-  // --- NEW: Remove Unwanted Face ---
   const handleDeleteFace = async (faceId: number) => {
     try {
       const response = await fetch(`/api/faces/${faceId}`, {
@@ -50,7 +50,6 @@ export const UnidentifiedPhotos: React.FC<UnidentifiedPhotosProps> = ({ refreshT
       });
 
       if (response.ok) {
-        // Instantly remove it from the screen
         setFaces(prev => prev.filter(face => face.id !== faceId));
       } else {
         alert("Failed to delete face.");
@@ -112,7 +111,6 @@ export const UnidentifiedPhotos: React.FC<UnidentifiedPhotosProps> = ({ refreshT
       {faces.map((face) => (
         <Card key={face.id} className="overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:shadow-lg transition-all group relative">
           
-          {/* Top Right Delete Button (Only visible on hover) */}
           <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <Button 
               variant="destructive" 

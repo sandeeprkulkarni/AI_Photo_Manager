@@ -179,7 +179,7 @@ async def get_unlabeled_faces():
             SELECT f.id, p.path 
             FROM faces f JOIN photos p ON f.photo_id = p.id
             WHERE f.identity_name IS NULL OR f.identity_name = ''
-            LIMIT 50
+            LIMIT 100
         """)
         faces = [{"id": r["id"], "image": r["path"]} for r in cursor.fetchall()]
         conn.close()

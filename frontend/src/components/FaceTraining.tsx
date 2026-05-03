@@ -21,7 +21,8 @@ export const FaceTraining = () => {
 
   const fetchLabeledFaces = async () => {
     try {
-      const response = await fetch('/api/faces/labeled');
+      // FIX: Added timestamp here as well so your new tags always appear instantly!
+      const response = await fetch(`/api/faces/labeled?t=${Date.now()}`);
       const text = await response.text(); 
       if (!text) return; 
       
