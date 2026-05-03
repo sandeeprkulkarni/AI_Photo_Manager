@@ -158,7 +158,7 @@ async def get_labeled_faces():
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT f.identity_name as name, MIN(f.id) as face_id
+            SELECT f.identity_name as name, MAX(f.id) as face_id
             FROM faces f JOIN photos p ON f.photo_id = p.id
             WHERE f.identity_name IS NOT NULL AND f.identity_name != ''
             GROUP BY f.identity_name

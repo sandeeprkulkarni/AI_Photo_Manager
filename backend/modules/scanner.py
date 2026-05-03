@@ -49,8 +49,10 @@ class PhotoScanner:
             cursor = conn.cursor()
             
             # ==========================================================
-            # 1. PRE-LOAD KNOWN FACES FOR AUTO-TAGGING
+            # 1. PRE-LOAD *ALL* KNOWN FACES FOR AUTO-TAGGING
             # ==========================================================
+            # We fetch every single labeled face so the AI has multiple 
+            # reference points for the same person (e.g., with/without hat)
             cursor.execute("SELECT identity_name, embedding FROM faces WHERE identity_name IS NOT NULL AND identity_name != ''")
             known_rows = cursor.fetchall()
             
@@ -60,7 +62,6 @@ class PhotoScanner:
             for name, emb in known_rows:
                 if emb:
                     known_names.append(name)
-                    # Convert the binary blob back into a numpy array for the AI
                     known_encodings.append(np.frombuffer(emb, dtype=np.float64))
                     
         except Exception as e:
@@ -85,7 +86,6 @@ class PhotoScanner:
                 if not file_hash:
                     continue 
                 
-                # Checks if the exact photo is already indexed
                 cursor.execute("SELECT id FROM photos WHERE hash = ?", (file_hash,))
                 if cursor.fetchone():
                     continue 
@@ -115,15 +115,17 @@ class PhotoScanner:
                             
                             identity = None
                             
-                            # 2. COMPARE AGAINST DATABASE BEFORE SAVING
+                            # 2. COMPARE AGAINST EVERY SAVED FACE VARIATION
                             if known_encodings:
-                                # Tolerance 0.5 is strict enough to avoid mixing up people
-                                matches = face_recognition.compare_faces(known_encodings, encoding, tolerance=0.5)
-                                if True in matches:
-                                    first_match_index = matches.index(True)
-                                    identity = known_names[first_match_index]
+                                # face_distance gives us a mathematical score of how close the match is
+                                # Lower numbers mean a better match. 0.5 is a standard strict threshold.
+                                face_distances = face_recognition.face_distance(known_encodings, encoding)
+                                best_match_index = np.argmin(face_distances)
+                                
+                                if face_distances[best_match_index] < 0.5:
+                                    identity = known_names[best_match_index]
                             
-                            # 3. SAVE TO DB (If identity is not None, it won't show in Unidentified!)
+                            # 3. SAVE TO DB 
                             cursor.execute("""
                                 INSERT INTO faces (photo_id, embedding, rect_x, rect_y, rect_w, rect_h, identity_name)
                                 VALUES (?, ?, ?, ?, ?, ?, ?)
