@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { FolderSearch, CheckCircle2, Loader2 } from "lucide-react";
+import { FolderSearch, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Progress } from "./ui/progress"; 
 import { UnidentifiedPhotos } from "./UnidentifiedPhotos";
 
@@ -17,7 +17,7 @@ export const FaceTraining = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanStats, setScanStats] = useState({ current: 0, total: 0, message: "" }); 
   const [labeledFaces, setLabeledFaces] = useState<LabeledFace[]>([]);
-  const [refreshKey, setRefreshKey] = useState(0); // Trigger to reload faces
+  const [refreshKey, setRefreshKey] = useState(0); 
 
   const fetchLabeledFaces = async () => {
     try {
@@ -38,10 +38,8 @@ export const FaceTraining = () => {
     fetchLabeledFaces();
   }, []);
 
-  // Polling mechanism to check scan status
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    
     if (isScanning) {
       interval = setInterval(async () => {
         try {
@@ -52,7 +50,7 @@ export const FaceTraining = () => {
             setIsScanning(false);
             setScanStats({ current: 0, total: 0, message: "" });
             fetchLabeledFaces(); 
-            setRefreshKey(prev => prev + 1); // Trigger gallery reload!
+            setRefreshKey(prev => prev + 1); 
           } else {
             setScanStats({
               current: data.current || 0,
@@ -65,7 +63,6 @@ export const FaceTraining = () => {
         }
       }, 1000); 
     }
-    
     return () => clearInterval(interval);
   }, [isScanning]);
 
@@ -80,17 +77,24 @@ export const FaceTraining = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder_path: folderPath })
       });
-      
       if (!response.ok) {
         setIsScanning(false);
         throw new Error("Scan failed to start");
       }
-      
       setFolderPath(""); 
     } catch (error) {
       console.error(error);
       alert("Error starting the scan. Please check the folder path.");
       setIsScanning(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    try {
+      await fetch('/api/scan/cancel', { method: 'POST' });
+      setScanStats(prev => ({ ...prev, message: "Cancelling scan..." }));
+    } catch (error) {
+      console.error("Failed to cancel", error);
     }
   };
 
@@ -116,17 +120,24 @@ export const FaceTraining = () => {
                 disabled={isScanning}
               />
             </div>
-            <Button 
-              onClick={handleScan} 
-              disabled={!folderPath || isScanning}
-              className="w-full sm:w-auto min-w-[140px]"
-            >
-              {isScanning ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Scanning</>
-              ) : (
-                <><FolderSearch className="w-4 h-4 mr-2" /> Start Scan</>
-              )}
-            </Button>
+            
+            {isScanning ? (
+              <Button 
+                onClick={handleCancel} 
+                variant="destructive"
+                className="w-full sm:w-auto min-w-[140px]"
+              >
+                <XCircle className="w-4 h-4 mr-2" /> Cancel Scan
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleScan} 
+                disabled={!folderPath}
+                className="w-full sm:w-auto min-w-[140px]"
+              >
+                <FolderSearch className="w-4 h-4 mr-2" /> Start Scan
+              </Button>
+            )}
           </div>
 
           {isScanning && (
@@ -156,7 +167,6 @@ export const FaceTraining = () => {
         </TabsList>
 
         <TabsContent value="unidentified" className="mt-6">
-          {/* Passes the refresh trigger to the gallery */}
           <UnidentifiedPhotos refreshTrigger={refreshKey} />
         </TabsContent>
 
@@ -172,7 +182,7 @@ export const FaceTraining = () => {
                 <div key={index} className="flex flex-col items-center space-y-3 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:shadow-md transition-shadow">
                   <div className="w-24 h-24 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 dark:border-slate-700 flex-shrink-0">
                     <img 
-                      src={`/api/image?path=${encodeURIComponent(face.image)}`} 
+                      src={face.image} 
                       alt={face.name} 
                       className="w-full h-full object-cover"
                     />

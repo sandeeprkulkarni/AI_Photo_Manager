@@ -1,12 +1,14 @@
 import os
 import sqlite3
 import time
+import io
 import uvicorn
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+from PIL import Image
 
 # Import from your modules
 from modules.index_store import DB_PATH, init_db, label_face_identity
@@ -14,18 +16,18 @@ from modules.index_store import DB_PATH, init_db, label_face_identity
 # --- Global State for Scanning Progress ---
 scan_status = {
     "is_scanning": False,
+    "cancel_requested": False,
     "current": 0,
     "total": 0,
     "message": ""
 }
 
-# 1. Setup Lifespan (Ensures Database is created before server starts!)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("========================================")
     print("🚀 Booting AI Photo Manager...")
     try:
-        init_db() # Forces the creation of data/db/index.db and all tables
+        init_db() 
         print("✅ Database initialized successfully.")
     except Exception as e:
         print(f"❌ Database error during startup: {e}")
@@ -35,7 +37,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# 2. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -44,7 +45,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Pydantic Models ---
 class ScanRequest(BaseModel):
     folder_path: str
 
@@ -52,30 +52,27 @@ class TrainRequest(BaseModel):
     face_id: int
     name: str
 
-# --- Background Task Functions ---
 def run_scanner_job(folder_path: str):
-    """Runs the scanner in the background and updates the global status."""
     global scan_status
-    scan_status.update({"is_scanning": True, "current": 0, "total": 0, "message": "Initializing..."})
+    scan_status.update({"is_scanning": True, "cancel_requested": False, "current": 0, "total": 0, "message": "Initializing..."})
     
     try:
         from modules.scanner import PhotoScanner
         scanner = PhotoScanner()
-        scanner.status_tracker = scan_status # Inject progress tracker
+        scanner.status_tracker = scan_status 
         scanner.scan_directory(folder_path)
         
-        if scan_status["message"] != "No images found in directory.":
+        if not scan_status["cancel_requested"] and scan_status["message"] != "No images found in directory.":
             scan_status["message"] = "Scan completed successfully!"
             
     except Exception as e:
         print(f"Background scanner failed: {e}")
         scan_status["message"] = f"Error: {str(e)}"
     finally:
-        # Pause for 2 seconds so the React UI has time to catch the 100% state
         time.sleep(2)
         scan_status["is_scanning"] = False
+        scan_status["cancel_requested"] = False
 
-# --- API Endpoints ---
 @app.get("/api/scan/status")
 async def get_scan_status():
     return scan_status
@@ -90,6 +87,14 @@ async def start_folder_scan(request: ScanRequest, background_tasks: BackgroundTa
     
     background_tasks.add_task(run_scanner_job, request.folder_path)
     return {"status": "success"}
+
+@app.post("/api/scan/cancel")
+async def cancel_scan():
+    """Signals the background scanner to stop."""
+    global scan_status
+    if scan_status["is_scanning"]:
+        scan_status["cancel_requested"] = True
+    return {"status": "success", "message": "Cancel requested"}
 
 @app.get("/api/stats")
 async def get_dashboard_stats():
@@ -131,13 +136,14 @@ async def get_labeled_faces():
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
+        # Grab a face ID to use our new crop endpoint for the thumbnail
         cursor.execute("""
-            SELECT f.identity_name as name, MIN(p.path) as sample_image
+            SELECT f.identity_name as name, MIN(f.id) as face_id
             FROM faces f JOIN photos p ON f.photo_id = p.id
             WHERE f.identity_name IS NOT NULL AND f.identity_name != ''
             GROUP BY f.identity_name
         """)
-        faces = [{"name": r["name"], "image": r["sample_image"]} for r in cursor.fetchall()]
+        faces = [{"name": r["name"], "image": f"/api/faces/image/{r['face_id']}"} for r in cursor.fetchall()]
         conn.close()
         return {"status": "success", "faces": faces}
     except Exception as e:
@@ -145,7 +151,6 @@ async def get_labeled_faces():
 
 @app.get("/api/faces/unlabeled")
 async def get_unlabeled_faces():
-    """Fetches faces without names for the UI to train."""
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
@@ -164,7 +169,6 @@ async def get_unlabeled_faces():
 
 @app.post("/api/train")
 async def train_face(request: TrainRequest):
-    """Uses your index_store logic to name a face."""
     try:
         label_face_identity(request.face_id, request.name)
         return {"status": "success", "message": "Face labeled!"}
@@ -177,8 +181,51 @@ async def serve_image(path: str):
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(path)
 
-# =====================================================================
-# STARTUP BLOCK 
-# =====================================================================
+@app.get("/api/faces/image/{face_id}")
+async def serve_face_image(face_id: int):
+    """Dynamically crops the face from the original photo."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.path, f.rect_x, f.rect_y, f.rect_w, f.rect_h 
+            FROM faces f JOIN photos p ON f.photo_id = p.id 
+            WHERE f.id = ?
+        """, (face_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row or not os.path.exists(row["path"]):
+            raise HTTPException(status_code=404, detail="Image not found")
+
+        with Image.open(row["path"]) as img:
+            left = row["rect_x"]
+            top = row["rect_y"]
+            right = left + row["rect_w"]
+            bottom = top + row["rect_h"]
+
+            # Add 20% padding around the face so it doesn't look cut off
+            padding = int(row["rect_w"] * 0.2)
+            left = max(0, left - padding)
+            top = max(0, top - padding)
+            right = min(img.width, right + padding)
+            bottom = min(img.height, bottom + padding)
+
+            face_crop = img.crop((left, top, right, bottom))
+            
+            # Convert to RGB to ensure JPEGs save correctly
+            if face_crop.mode != "RGB":
+                face_crop = face_crop.convert("RGB")
+                
+            buf = io.BytesIO()
+            face_crop.save(buf, format="JPEG")
+            buf.seek(0)
+            
+            return StreamingResponse(buf, media_type="image/jpeg")
+    except Exception as e:
+        print(f"Error serving cropped face: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load face image")
+
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

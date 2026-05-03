@@ -34,7 +34,6 @@ export const UnidentifiedPhotos: React.FC<UnidentifiedPhotosProps> = ({ refreshT
     }
   };
 
-  // Re-fetch when the refreshTrigger changes (e.g., scan completes)
   useEffect(() => {
     fetchUnlabeledFaces();
   }, [refreshTrigger]);
@@ -96,8 +95,9 @@ export const UnidentifiedPhotos: React.FC<UnidentifiedPhotosProps> = ({ refreshT
         <Card key={face.id} className="overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:shadow-lg transition-all group">
           
           <div className="aspect-square relative bg-slate-100 dark:bg-slate-800">
+            {/* THIS IS THE FIX: We hit the new endpoint with the ID to grab the crop! */}
             <img 
-              src={`/api/image?path=${encodeURIComponent(face.image)}`} 
+              src={`/api/faces/image/${face.id}`} 
               alt="Unidentified face" 
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
