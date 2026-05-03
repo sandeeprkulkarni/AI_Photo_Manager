@@ -130,13 +130,40 @@ async def get_dashboard_stats():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==========================================
+# NEW ENDPOINT: Fetch All Photos for Organize Tab
+# ==========================================
+@app.get("/api/photos")
+async def get_all_photos():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        # Order by newest first
+        cursor.execute("""
+            SELECT id, path, size_kb, taken_at, event_type, location_name 
+            FROM photos 
+            ORDER BY id DESC
+        """)
+        photos = [{
+            "id": r["id"], 
+            "path": r["path"], 
+            "size_kb": r["size_kb"], 
+            "taken_at": r["taken_at"], 
+            "event": r["event_type"], 
+            "location": r["location_name"]
+        } for r in cursor.fetchall()]
+        conn.close()
+        return {"status": "success", "photos": photos}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/faces/labeled")
 async def get_labeled_faces():
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        # Grab a face ID to use our new crop endpoint for the thumbnail
         cursor.execute("""
             SELECT f.identity_name as name, MIN(f.id) as face_id
             FROM faces f JOIN photos p ON f.photo_id = p.id
@@ -183,7 +210,6 @@ async def serve_image(path: str):
 
 @app.get("/api/faces/image/{face_id}")
 async def serve_face_image(face_id: int):
-    """Dynamically crops the face from the original photo."""
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
@@ -205,7 +231,6 @@ async def serve_face_image(face_id: int):
             right = left + row["rect_w"]
             bottom = top + row["rect_h"]
 
-            # Add 20% padding around the face so it doesn't look cut off
             padding = int(row["rect_w"] * 0.2)
             left = max(0, left - padding)
             top = max(0, top - padding)
@@ -214,7 +239,6 @@ async def serve_face_image(face_id: int):
 
             face_crop = img.crop((left, top, right, bottom))
             
-            # Convert to RGB to ensure JPEGs save correctly
             if face_crop.mode != "RGB":
                 face_crop = face_crop.convert("RGB")
                 

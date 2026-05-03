@@ -1,220 +1,155 @@
-import { useState } from "react";
-import { Search, Filter, Grid3x3, CheckCircle2, User, MapPin, Calendar } from "lucide-react";
-import { motion } from "motion/react";
+import React, { useState, useEffect } from 'react';
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
+import { Search, Users, MapPin, Tag, Image as ImageIcon, Loader2 } from "lucide-react";
 
-const mockPhotos = Array.from({ length: 24 }, (_, i) => ({
-  id: i + 1,
-  hasLocation: i % 3 !== 0,
-  hasPeople: i % 2 === 0,
-  people: i % 2 === 0 ? ["Sarah Chen", "Michael Park"] : [],
-  location: i % 3 !== 0 ? "San Francisco, CA" : undefined,
-}));
+interface Photo {
+  id: number;
+  path: string;
+  size_kb: number;
+  taken_at: string;
+  event: string | null;
+  location: string | null;
+}
 
-export function PhotoOrganization() {
-  const [selectedPhotos, setSelectedPhotos] = useState<number[]>([]);
-  const [filterType, setFilterType] = useState<"all" | "people" | "location" | "untagged">("all");
+export const PhotoOrganization = () => {
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [processing, setProcessing] = useState(false);
 
-  const filteredPhotos = mockPhotos.filter((photo) => {
-    if (filterType === "people" && !photo.hasPeople) return false;
-    if (filterType === "location" && !photo.hasLocation) return false;
-    if (filterType === "untagged" && (photo.hasLocation || photo.hasPeople)) return false;
+  useEffect(() => {
+    const fetchPhotos = async () => {
+      try {
+        const response = await fetch('/api/photos');
+        const data = await response.json();
+        if (data.status === 'success') {
+          setPhotos(data.photos);
+        }
+      } catch (error) {
+        console.error("Error fetching photos:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPhotos();
+  }, []);
+
+  // Filter photos based on the active tab and search query
+  const filteredPhotos = photos.filter(photo => {
+    // 1. Apply Tab Filters
+    if (activeTab === "Location" && !photo.location) return false;
+    if (activeTab === "Untagged" && (photo.event || photo.location)) return false;
+    // (Note: The "People" tab is a placeholder until we link the faces database table to this view!)
+
+    // 2. Apply Search Query
+    if (searchQuery) {
+      const queryLower = searchQuery.toLowerCase();
+      
+      // Check if the search text matches the folder path, event name, or location name
+      const matchesPath = photo.path.toLowerCase().includes(queryLower);
+      const matchesEvent = photo.event ? photo.event.toLowerCase().includes(queryLower) : false;
+      const matchesLoc = photo.location ? photo.location.toLowerCase().includes(queryLower) : false;
+
+      if (!matchesPath && !matchesEvent && !matchesLoc) {
+        return false;
+      }
+    }
+    
     return true;
   });
 
-  const togglePhotoSelection = (id: number) => {
-    setSelectedPhotos((prev) =>
-      prev.includes(id) ? prev.filter((photoId) => photoId !== id) : [...prev, id]
-    );
-  };
-
-  const handleBulkOrganize = () => {
-    setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
-      setSelectedPhotos([]);
-    }, 2000);
-  };
-
   return (
-    <div className="h-full flex flex-col">
+    <div className="p-6 max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-500">
+      
       {/* Header */}
-      <div className="border-b border-border bg-card px-8 py-6">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1>Photo Organization</h1>
-              <p className="text-muted-foreground mt-1">
-                {filteredPhotos.length} photos • {selectedPhotos.length} selected
-              </p>
-            </div>
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Photo Organization</h1>
+        <p className="text-sm text-slate-500">
+          {filteredPhotos.length} photos • 0 selected
+        </p>
+      </div>
 
-            {selectedPhotos.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex gap-3"
-              >
-                <button
-                  onClick={handleBulkOrganize}
-                  disabled={processing}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  {processing ? "Processing..." : "Organize Selected"}
-                </button>
-                <button
-                  onClick={() => setSelectedPhotos([])}
-                  className="px-4 py-2 border border-border rounded-lg hover:bg-accent transition-colors"
-                >
-                  Clear Selection
-                </button>
-              </motion.div>
-            )}
-          </div>
+      {/* Controls Bar */}
+      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+        
+        {/* Search Bar */}
+        <div className="relative w-full sm:max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input 
+            placeholder="Search by folder path, location, or event..." 
+            className="pl-9 bg-white border-slate-200 text-slate-900 w-full shadow-sm" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
 
-          {/* Filters */}
-          <div className="flex gap-4">
-            <div className="flex-1 relative">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search photos..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-input-background rounded-lg"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setFilterType("all")}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  filterType === "all"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground hover:bg-accent"
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setFilterType("people")}
-                className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
-                  filterType === "people"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground hover:bg-accent"
-                }`}
-              >
-                <User size={16} />
-                People
-              </button>
-              <button
-                onClick={() => setFilterType("location")}
-                className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
-                  filterType === "location"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground hover:bg-accent"
-                }`}
-              >
-                <MapPin size={16} />
-                Location
-              </button>
-              <button
-                onClick={() => setFilterType("untagged")}
-                className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
-                  filterType === "untagged"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground hover:bg-accent"
-                }`}
-              >
-                <Filter size={16} />
-                Untagged
-              </button>
-            </div>
-          </div>
+        {/* Filter Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0">
+          <Button 
+            variant={activeTab === "All" ? "secondary" : "ghost"} 
+            size="sm" 
+            className={`text-sm rounded-full px-4 ${activeTab === "All" ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:text-slate-900"}`}
+            onClick={() => setActiveTab("All")}
+          >
+            All
+          </Button>
+          <Button 
+            variant={activeTab === "People" ? "secondary" : "ghost"} 
+            size="sm" 
+            className={`text-sm rounded-full px-4 ${activeTab === "People" ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:text-slate-900"}`}
+            onClick={() => setActiveTab("People")}
+          >
+            <Users className="w-4 h-4 mr-2" /> People
+          </Button>
+          <Button 
+            variant={activeTab === "Location" ? "secondary" : "ghost"} 
+            size="sm" 
+            className={`text-sm rounded-full px-4 ${activeTab === "Location" ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:text-slate-900"}`}
+            onClick={() => setActiveTab("Location")}
+          >
+            <MapPin className="w-4 h-4 mr-2" /> Location
+          </Button>
+          <Button 
+            variant={activeTab === "Untagged" ? "secondary" : "ghost"} 
+            size="sm" 
+            className={`text-sm rounded-full px-4 ${activeTab === "Untagged" ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:text-slate-900"}`}
+            onClick={() => setActiveTab("Untagged")}
+          >
+            <Tag className="w-4 h-4 mr-2" /> Untagged
+          </Button>
         </div>
       </div>
 
       {/* Photo Grid */}
-      <div className="flex-1 overflow-auto p-8">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="grid grid-cols-6 gap-4">
-            {filteredPhotos.map((photo) => (
-              <PhotoCard
-                key={photo.id}
-                photo={photo}
-                selected={selectedPhotos.includes(photo.id)}
-                onToggle={() => togglePhotoSelection(photo.id)}
-              />
-            ))}
-          </div>
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
         </div>
-      </div>
+      ) : filteredPhotos.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-slate-500 bg-slate-50 rounded-xl border border-slate-200 border-dashed">
+          <ImageIcon className="w-12 h-12 mb-4 text-slate-300" />
+          <p>No photos found matching your search.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          {filteredPhotos.map((photo) => (
+            <div 
+              key={photo.id} 
+              className="group relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer shadow-sm"
+            >
+              <img 
+                src={`/api/image?path=${encodeURIComponent(photo.path)}`} 
+                alt="Scanned photo" 
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
-}
-
-function PhotoCard({
-  photo,
-  selected,
-  onToggle,
-}: {
-  photo: {
-    id: number;
-    hasLocation: boolean;
-    hasPeople: boolean;
-    people: string[];
-    location?: string;
-  };
-  selected: boolean;
-  onToggle: () => void;
-}) {
-  const [hovering, setHovering] = useState(false);
-
-  return (
-    <motion.div
-      whileHover={{ scale: 1.02 }}
-      className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer ${
-        selected ? "ring-2 ring-primary" : ""
-      }`}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      onClick={onToggle}
-    >
-      <div className="w-full h-full bg-muted flex items-center justify-center">
-        <Grid3x3 size={32} className="text-muted-foreground" />
-      </div>
-
-      {/* Overlay */}
-      {(hovering || selected) && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"
-        >
-          <div className="absolute bottom-0 left-0 right-0 p-3 text-white space-y-1">
-            {photo.people.length > 0 && (
-              <div className="flex items-center gap-1 text-xs">
-                <User size={12} />
-                {photo.people.join(", ")}
-              </div>
-            )}
-            {photo.location && (
-              <div className="flex items-center gap-1 text-xs">
-                <MapPin size={12} />
-                {photo.location}
-              </div>
-            )}
-          </div>
-        </motion.div>
-      )}
-
-      {/* Selection indicator */}
-      {selected && (
-        <div className="absolute top-2 right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
-          <CheckCircle2 size={16} className="text-primary-foreground" />
-        </div>
-      )}
-    </motion.div>
-  );
-}
+};
