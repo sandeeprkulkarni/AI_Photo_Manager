@@ -16,7 +16,7 @@ export function Deduplicator() {
     current: 0,
     total: 0,
     duplicates_found: 0,
-    message: "System idle. Input target directory folder to evaluate.",
+    message: "System ready. Input a target directory folder path to evaluate.",
   });
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);

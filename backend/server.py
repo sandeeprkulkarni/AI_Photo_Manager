@@ -67,6 +67,7 @@ class TrainRequest(BaseModel):
     name: str
 
 
+# Pydantic validation model for request payload mapping
 class DeduplicateRequest(BaseModel):
     folder_path: str
 
