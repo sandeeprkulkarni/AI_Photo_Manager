@@ -5,8 +5,9 @@ import cv2
 import re
 import numpy as np
 from datetime import datetime
-from config import DB_PATH
 
+# FIX: Import the exact database path used by the rest of the application
+from modules.index_store import DB_PATH
 
 def parse_flexible_timestamp(timestamp_str: str) -> datetime:
     """
@@ -25,7 +26,6 @@ def parse_flexible_timestamp(timestamp_str: str) -> datetime:
     except Exception:
         return datetime.min
 
-
 def calculate_blur_score(image_path: str) -> float:
     """Calculates image sharpness using the variance of the Laplacian method."""
     try:
@@ -37,7 +37,6 @@ def calculate_blur_score(image_path: str) -> float:
         return float(cv2.Laplacian(img, cv2.CV_64F).var())
     except Exception:
         return 0.0
-
 
 def calculate_light_score(image_path: str) -> float:
     """Evaluates photo contrast balancing by scoring pixel deviations from absolute middle gray."""
@@ -51,7 +50,6 @@ def calculate_light_score(image_path: str) -> float:
         return float(127.0 - abs(127.0 - mean_brightness))
     except Exception:
         return 0.0
-
 
 def run_deduplication_job(target_folder: str, status_tracker: dict):
     """
@@ -73,17 +71,13 @@ def run_deduplication_job(target_folder: str, status_tracker: dict):
 
             # Retrieve only photos residing inside the user-specified input directory
             cursor.execute("""
-                           SELECT id,
-                                  path,
-                                  taken_at,
-                                  location_name,
-                                  (SELECT COUNT(*) FROM faces WHERE photo_id = photos.id) as face_count
-                           FROM photos
-                           WHERE path LIKE ?
-                             AND taken_at IS NOT NULL
-                           ORDER BY taken_at ASC
-                           """, (f"{target_folder}%",))
-
+                SELECT id, path, taken_at, location_name,
+                       (SELECT COUNT(*) FROM faces WHERE photo_id = photos.id) as face_count
+                FROM photos
+                WHERE path LIKE ? AND taken_at IS NOT NULL
+                ORDER BY taken_at ASC
+            """, (f"{target_folder}%",))
+            
             photos = cursor.fetchall()
             total_count = len(photos)
             status_tracker["total"] = total_count
@@ -97,11 +91,10 @@ def run_deduplication_job(target_folder: str, status_tracker: dict):
 
             # Reset prior evaluation state within this execution workspace directory
             conn.execute("""
-                         UPDATE photos
-                         SET duplicate_group_id = NULL,
-                             is_best_variant    = 1
-                         WHERE path LIKE ?
-                         """, (f"{target_folder}%",))
+                UPDATE photos 
+                SET duplicate_group_id = NULL, is_best_variant = 1 
+                WHERE path LIKE ?
+            """, (f"{target_folder}%",))
             conn.commit()
 
             groups = []
@@ -145,7 +138,7 @@ def run_deduplication_job(target_folder: str, status_tracker: dict):
 
                 for item in group:
                     status_tracker["current"] += 1
-
+                    
                     blur = calculate_blur_score(item['path'])
                     light = calculate_light_score(item['path'])
 
@@ -159,11 +152,10 @@ def run_deduplication_job(target_folder: str, status_tracker: dict):
 
                     # Downgrade item to a hidden duplicate variant
                     conn.execute("""
-                                 UPDATE photos
-                                 SET duplicate_group_id = ?,
-                                     is_best_variant    = 0
-                                 WHERE id = ?
-                                 """, (group_id, item['id']))
+                        UPDATE photos 
+                        SET duplicate_group_id = ?, is_best_variant = 0 
+                        WHERE id = ?
+                    """, (group_id, item['id']))
                     duplicate_counter += 1
 
                     if total_score > highest_score:
