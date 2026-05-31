@@ -4,6 +4,7 @@ import sqlite3
 import time
 import io
 import uvicorn
+import threading
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -12,6 +13,7 @@ from contextlib import asynccontextmanager
 from PIL import Image
 
 from modules.index_store import DB_PATH, init_db, label_face_identity
+from modules.deduplicator import run_deduplication_job
 
 scan_status = {
     "is_scanning": False,
@@ -232,6 +234,15 @@ async def train_face(request: TrainRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/photos/deduplicate")
+async def start_deduplication(payload: dict):
+    target = payload.get("folder_path")
+    # This triggers the function in the file we just updated
+    # It will run in the background so your UI doesn't freeze
+    import threading
+    threading.Thread(target=run_deduplication_job, args=(target, status_tracker)).start()
+    return {"message": "Deduplication started"}        
+
 
 @app.delete("/api/faces/{face_id}")
 async def delete_face(face_id: int):
@@ -308,16 +319,15 @@ async def get_deduplication_status():
 
 
 @app.post("/api/photos/deduplicate")
-async def trigger_deduplication(request: DeduplicateRequest, background_tasks: BackgroundTasks):
-    global dedup_status
+async def trigger_deduplication(request: DeduplicateRequest):
     if not os.path.exists(request.folder_path):
-        raise HTTPException(status_code=400, detail="Target processing path does not exist on disk.")
+        raise HTTPException(status_code=400, detail="Target processing path does not exist.")
     if dedup_status["is_processing"]:
-        raise HTTPException(status_code=400, detail="An optimization pipeline pass is already running.")
+        raise HTTPException(status_code=400, detail="Pipeline already running.")
 
-    from modules.deduplicator import run_deduplication_job
-    background_tasks.add_task(run_deduplication_job, request.folder_path, dedup_status)
-    return {"status": "success"}
+    # Pass the global dedup_status to the thread
+    threading.Thread(target=run_deduplication_job, args=(request.folder_path, dedup_status)).start()
+    return {"status": "success", "message": "Deduplication started."}
 
 
 if __name__ == "__main__":
