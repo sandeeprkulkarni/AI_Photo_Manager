@@ -6,6 +6,7 @@ export function RootLayout() {
     { path: "/", label: "Dashboard", icon: "📊" },
     { path: "/train", label: "Face Training", icon: "👤" },
     { path: "/organize", label: "Organize", icon: "📂" },
+    { path: "/deduplicate", label: "Clean Duplicates", icon: "✨" }, // Added item
     { path: "/locations", label: "Locations", icon: "📍" },
     { path: "/events", label: "Events", icon: "✨" },
     { path: "/unidentified", label: "Unidentified", icon: "❓" },

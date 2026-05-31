@@ -1,3 +1,4 @@
+// frontend/src/routes.tsx
 import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./components/RootLayout";
 import { Dashboard } from "./components/Dashboard";
@@ -7,6 +8,7 @@ import { LocationGallery } from "./components/LocationGallery";
 import { EventGallery } from "./components/EventGallery";
 import { UnidentifiedPhotos } from "./components/UnidentifiedPhotos";
 import { Settings } from "./components/Settings";
+import { Deduplicator } from "./components/Deduplicator"; // Imported Page Element
 
 export const router = createBrowserRouter([
   {
@@ -16,6 +18,7 @@ export const router = createBrowserRouter([
       { index: true, Component: Dashboard },
       { path: "train", Component: FaceTraining },
       { path: "organize", Component: PhotoOrganization },
+      { path: "deduplicate", Component: Deduplicator }, // Registered Component Path
       { path: "locations", Component: LocationGallery },
       { path: "events", Component: EventGallery },
       { path: "unidentified", Component: UnidentifiedPhotos },
