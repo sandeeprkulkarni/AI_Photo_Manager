@@ -19,7 +19,8 @@ export function Deduplicator() {
     message: "System ready. Input a target directory folder path to evaluate.",
   });
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // Using standard number ID for browser environments to satisfy Vite/TypeScript
+  const timerRef = useRef<number | null>(null);
 
   const pollStatus = async () => {
     try {
@@ -28,7 +29,7 @@ export function Deduplicator() {
       setStatus(data);
 
       if (data.is_processing) {
-        timerRef.current = setTimeout(pollStatus, 1000);
+        timerRef.current = window.setTimeout(pollStatus, 1000);
       }
     } catch (err) {
       console.error("Error polling deduplication progress state:", err);
@@ -38,7 +39,9 @@ export function Deduplicator() {
   useEffect(() => {
     pollStatus();
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
     };
   }, []);
 
@@ -103,7 +106,7 @@ export function Deduplicator() {
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
               disabled={status.is_processing}
-              placeholder="/Users/sandeep/Pictures/TripBurst"
+              placeholder="E:/AI Practice/Photos"
               className="flex-1 min-w-0 px-4 py-2 bg-background border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
             />
             <button
